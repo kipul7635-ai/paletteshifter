@@ -1,0 +1,797 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>palette swap</title>
+<style>
+  :root{
+    --fg:#111; --bg:#fff; --line:#111; --soft:#d9d9d9;
+    --muted:#767676; --accent:#ff3b00; --hover:#f1f1f1;
+  }
+  *{ box-sizing:border-box; border-radius:0 !important; }
+  html,body{ margin:0; height:100%; }
+  body{
+    background:var(--bg); color:var(--fg);
+    font:13px/1.45 ui-monospace,SFMono-Regular,Menlo,Consolas,"Liberation Mono",monospace;
+  }
+  .app{ display:flex; flex-direction:column; height:100dvh; }
+
+  /* ---------- header ---------- */
+  header{
+    display:flex; align-items:baseline; gap:16px; flex-wrap:wrap;
+    padding:14px 16px; border-bottom:2px solid var(--line); flex:0 0 auto;
+  }
+  header h1{ margin:0; font-size:15px; letter-spacing:3px; text-transform:uppercase; font-weight:700; }
+  header .note{ color:var(--muted); font-size:12px; }
+
+  /* ---------- toolbar (form-like) ---------- */
+  .toolbar{ display:flex; align-items:stretch; border-bottom:1px solid var(--line); flex:0 0 auto; }
+  .btn{
+    display:inline-flex; align-items:center; justify-content:center;
+    border:0; background:var(--fg); color:#fff;
+    padding:10px 20px; font:inherit; font-size:12px;
+    letter-spacing:2px; text-transform:uppercase;
+    cursor:pointer; user-select:none; white-space:nowrap;
+  }
+  .btn:hover:not(:disabled){ background:var(--accent); }
+  .btn:disabled{ background:#bbb; cursor:not-allowed; }
+  .btn.light{ background:#fff; color:var(--fg); }
+  .btn.light:hover:not(:disabled){ background:var(--accent); color:#fff; }
+  .btn.light:disabled{ background:#fff; color:#bbb; cursor:not-allowed; }
+
+  .fileinfo{
+    flex:1; min-width:0; display:flex; align-items:center;
+    padding:10px 12px; font-size:12px; color:var(--muted);
+    border-left:1px solid var(--soft); border-right:1px solid var(--soft);
+    overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+  }
+
+  /* ---------- status bar ---------- */
+  #bar{
+    display:flex; align-items:center; gap:12px; flex-wrap:wrap;
+    padding:8px 16px; border-bottom:1px solid var(--soft); flex:0 0 auto;
+  }
+  #status{ color:var(--muted); flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .opt{
+    display:flex; align-items:center; gap:6px;
+    font-size:11px; letter-spacing:1px; text-transform:uppercase;
+    color:var(--muted); cursor:pointer; user-select:none; white-space:nowrap;
+  }
+  .opt input{ margin:0; cursor:pointer; accent-color:var(--fg); }
+
+  /* ---------- layout ---------- */
+  main{ flex:1; display:grid; grid-template-columns:minmax(0,1fr) 340px; min-height:0; }
+
+  .stage{
+    position:relative; display:grid; place-items:center; padding:20px; overflow:hidden;
+    background-color:#fafafa;
+    background-image:
+      linear-gradient(45deg,#f2f2f2 25%,transparent 25%,transparent 75%,#f2f2f2 75%),
+      linear-gradient(45deg,#f2f2f2 25%,transparent 25%,transparent 75%,#f2f2f2 75%);
+    background-size:20px 20px; background-position:0 0,10px 10px;
+  }
+  .stage.drag{ outline:2px dashed var(--accent); outline-offset:-12px; }
+
+  #view{
+    display:none; max-width:100%; max-height:100%;
+    border:1px solid var(--line);
+    box-shadow:6px 6px 0 rgba(17,17,17,.08);
+  }
+
+  .empty{
+    text-align:center; color:var(--muted); cursor:pointer;
+    border:1px dashed var(--line); background:#fff;
+    padding:34px 44px; transition:background .15s;
+  }
+  .empty:hover{ background:var(--hover); }
+  .empty .t{ margin:0; font-size:12px; font-weight:700; letter-spacing:2px; text-transform:uppercase; color:var(--fg); }
+  .empty .s{ margin:7px 0 0; font-size:11px; }
+
+  /* ---------- side panel ---------- */
+  .panel{
+    border-left:1px solid var(--line); background:#fff;
+    overflow-y:auto; display:flex; flex-direction:column;
+  }
+  .group{ padding:14px 16px; border-bottom:1px solid var(--soft); }
+  .group:last-child{ border-bottom:none; }
+  .group h2{
+    margin:0 0 10px; font-size:11px; font-weight:400;
+    letter-spacing:2px; text-transform:uppercase; color:var(--muted);
+  }
+  .hint{ margin:0 0 12px; font-size:11px; line-height:1.55; color:var(--muted); }
+
+  .field{ display:flex; align-items:baseline; justify-content:space-between; gap:10px; margin:0 0 6px; }
+  .field label{ font-size:11px; letter-spacing:1px; text-transform:uppercase; color:var(--muted); }
+  .field output{ font-size:11px; color:var(--fg); font-variant-numeric:tabular-nums; }
+
+  input[type=range]{
+    -webkit-appearance:none; appearance:none; display:block;
+    width:100%; height:14px; margin:0 0 4px;
+    background:transparent; outline:none;
+  }
+  input[type=range]::-webkit-slider-runnable-track{ height:2px; background:var(--soft); }
+  input[type=range]::-webkit-slider-thumb{
+    -webkit-appearance:none; width:12px; height:12px; margin-top:-5px;
+    background:var(--fg); border:0; cursor:pointer;
+  }
+  input[type=range]:hover::-webkit-slider-thumb,
+  input[type=range]:focus::-webkit-slider-thumb{ background:var(--accent); }
+  input[type=range]::-moz-range-track{ height:2px; background:var(--soft); }
+  input[type=range]::-moz-range-thumb{
+    width:12px; height:12px; background:var(--fg);
+    border:0; border-radius:0 !important; cursor:pointer;
+  }
+  input[type=range]:hover::-moz-range-thumb{ background:var(--accent); }
+
+  /* ---------- swatch rows (full-bleed like table rows) ---------- */
+  .swatches{ margin:8px -16px 0; }
+  .swatches > p{ padding:0 16px; margin:0; }
+  .row{
+    display:grid; grid-template-columns:26px 12px 26px 1fr auto;
+    align-items:center; gap:8px;
+    padding:6px 16px; border-bottom:1px solid #f0f0f0;
+    font-size:11px;
+  }
+  .row:first-child{ border-top:1px solid #f0f0f0; }
+  .row:hover{ background:var(--hover); }
+  .row.modified{ box-shadow:inset 3px 0 0 var(--accent); }
+
+  .chip{
+    display:block; width:26px; height:26px;
+    box-shadow:inset 0 0 0 1px rgba(17,17,17,.22);
+  }
+  .pick{ position:relative; cursor:pointer; overflow:hidden; }
+  .pick > span{ position:absolute; inset:0; display:block; }
+  .pick input[type=color]{
+    position:absolute; inset:0; width:100%; height:100%;
+    opacity:0; border:none; padding:0; cursor:pointer; background:none;
+  }
+  .pick::after{
+    content:''; position:absolute; inset:0;
+    box-shadow:inset 0 0 0 1px rgba(17,17,17,.5); pointer-events:none;
+  }
+  .arrow{ color:#bbb; font-size:11px; text-align:center; }
+  .hex{ color:var(--muted); font-variant-numeric:tabular-nums; overflow:hidden; text-overflow:ellipsis; }
+  .pct{ color:#aaa; font-size:10px; font-variant-numeric:tabular-nums; }
+
+  /* ---------- mini buttons ---------- */
+  .mini{ display:flex; gap:6px; margin-top:12px; }
+  .mini button{
+    flex:1; border:1px solid var(--line); background:#fff; color:var(--fg);
+    font:inherit; font-size:11px; letter-spacing:1px; text-transform:uppercase;
+    padding:6px 8px; cursor:pointer;
+  }
+  .mini button:hover{ background:var(--fg); color:#fff; }
+  .mini button.accent:hover{ background:var(--accent); border-color:var(--accent); color:#fff; }
+
+  @media (max-width:860px){
+    main{ grid-template-columns:1fr; grid-template-rows:minmax(220px,44vh) 1fr; }
+    .panel{ border-left:none; border-top:1px solid var(--line); }
+    .fileinfo{ padding:10px; font-size:11px; }
+    .btn{ padding:10px 14px; font-size:11px; letter-spacing:1.5px; }
+    .empty{ padding:26px 30px; }
+  }
+</style>
+</head>
+<body>
+<div class="app">
+
+  <header>
+    <h1>palette swap</h1>
+    <span class="note">recolour an image by remapping its palette — not a hue shift</span>
+  </header>
+
+  <div class="toolbar">
+    <label class="btn" id="uploadBtn">
+      upload image
+      <input type="file" id="file" accept="image/*" hidden>
+    </label>
+    <div class="fileinfo" id="fileinfo">no image loaded</div>
+    <button class="btn light" id="download" disabled>download png</button>
+  </div>
+
+  <div id="bar">
+    <span id="status">idle — drop an image to begin</span>
+    <label class="opt"><input type="checkbox" id="keeplum" checked> preserve luminance</label>
+  </div>
+
+  <main>
+    <section class="stage" id="stage">
+      <canvas id="view"></canvas>
+      <div class="empty" id="empty">
+        <p class="t">drop an image here</p>
+        <p class="s">or click to browse — png, jpg, webp…</p>
+      </div>
+    </section>
+
+    <aside class="panel">
+
+      <div class="group">
+        <h2>cleanup</h2>
+        <p class="hint">smooths sensor noise, grain and compression artefacts <em>before</em> the palette is extracted. edges stay sharp.</p>
+        <div class="field">
+          <label for="denoise">noise reduction</label>
+          <output id="denoise-val">0%</output>
+        </div>
+        <input type="range" id="denoise" min="0" max="100" value="0" step="1">
+      </div>
+
+      <div class="group">
+        <h2>palette</h2>
+        <p class="hint">colours are extracted from your image. click a right-hand swatch to change what it becomes.</p>
+        <div class="field">
+          <label for="k">colour count</label>
+          <output id="k-val">6</output>
+        </div>
+        <input type="range" id="k" min="2" max="16" value="6" step="1">
+        <div class="swatches" id="swatches">
+          <p class="hint">no image loaded yet</p>
+        </div>
+        <div class="mini">
+          <button id="reextract" type="button">re-extract</button>
+          <button id="reset" type="button" class="accent">reset colours</button>
+        </div>
+      </div>
+
+      <div class="group">
+        <h2>adjust</h2>
+        <div class="field">
+          <label for="strength">strength</label>
+          <output id="strength-val">100%</output>
+        </div>
+        <input type="range" id="strength" min="0" max="100" value="100" step="1">
+        <p class="hint" style="margin:10px 0 0">
+          blends between the original image and the recoloured result. luminance preservation
+          keeps the original shading, so photos look recoloured rather than posterised.
+        </p>
+      </div>
+
+    </aside>
+  </main>
+</div>
+
+<script>
+(() => {
+'use strict';
+
+/* ============================================================
+   Colour math (sRGB ⇄ linear ⇄ CIELAB, D65)
+   ============================================================ */
+const SRGB2LIN = new Float32Array(256);
+for (let i = 0; i < 256; i++) {
+  const c = i / 255;
+  SRGB2LIN[i] = c <= 0.04045 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
+}
+
+const LIN_N = 4096;
+const LIN2SRGB = new Float32Array(LIN_N + 1);
+for (let i = 0; i <= LIN_N; i++) {
+  const c = i / LIN_N;
+  LIN2SRGB[i] = (c <= 0.0031308 ? c * 12.92 : 1.055 * Math.pow(c, 1 / 2.4) - 0.055) * 255;
+}
+function lin2srgb(v) {
+  if (v <= 0) return 0;
+  if (v >= 1) return 255;
+  const x = v * LIN_N, i = x | 0;
+  return LIN2SRGB[i] + (LIN2SRGB[i + 1] - LIN2SRGB[i]) * (x - i);
+}
+
+function rgb2labInto(r, g, b, out) {
+  const R = SRGB2LIN[r], G = SRGB2LIN[g], B = SRGB2LIN[b];
+  let x = (0.4124564 * R + 0.3575761 * G + 0.1804375 * B) / 0.95047;
+  let y =  0.2126729 * R + 0.7151522 * G + 0.0721750 * B;
+  let z = (0.0193339 * R + 0.1191920 * G + 0.9503041 * B) / 1.08883;
+  x = x > 0.008856 ? Math.cbrt(x) : 7.787 * x + 16 / 116;
+  y = y > 0.008856 ? Math.cbrt(y) : 7.787 * y + 16 / 116;
+  z = z > 0.008856 ? Math.cbrt(z) : 7.787 * z + 16 / 116;
+  out[0] = 116 * y - 16;
+  out[1] = 500 * (x - y);
+  out[2] = 200 * (y - z);
+}
+function rgb2lab(r, g, b) { const o = [0, 0, 0]; rgb2labInto(r, g, b, o); return o; }
+
+function rgb2L(r, g, b) {
+  const y = 0.2126729 * SRGB2LIN[r] + 0.7151522 * SRGB2LIN[g] + 0.0721750 * SRGB2LIN[b];
+  return y > 0.008856 ? 116 * Math.cbrt(y) - 16 : 903.3 * y;
+}
+
+function labToRgbInto(L, a, b, out) {
+  const fy = (L + 16) / 116;
+  const fx = fy + a / 500;
+  const fz = fy - b / 200;
+  let xr = fx * fx * fx, yr = fy * fy * fy, zr = fz * fz * fz;
+  if (xr <= 0.008856) xr = (fx - 16 / 116) / 7.787;
+  if (yr <= 0.008856) yr = (fy - 16 / 116) / 7.787;
+  if (zr <= 0.008856) zr = (fz - 16 / 116) / 7.787;
+  const X = xr * 0.95047, Y = yr, Z = zr * 1.08883;
+  out[0] = lin2srgb( 3.2404542 * X - 1.5371385 * Y - 0.4985314 * Z);
+  out[1] = lin2srgb(-0.9692660 * X + 1.8760108 * Y + 0.0415560 * Z);
+  out[2] = lin2srgb( 0.0556434 * X - 0.2040259 * Y + 1.0572252 * Z);
+}
+function labToRgb(L, a, b) {
+  const o = [0, 0, 0];
+  labToRgbInto(L, a, b, o);
+  return [Math.round(o[0]), Math.round(o[1]), Math.round(o[2])];
+}
+
+const hex      = c => '#' + c.map(v => Math.round(v).toString(16).padStart(2, '0')).join('');
+const css      = c => `rgb(${c[0] | 0},${c[1] | 0},${c[2] | 0})`;
+const hexToRgb = h => [parseInt(h.slice(1, 3), 16), parseInt(h.slice(3, 5), 16), parseInt(h.slice(5, 7), 16)];
+const differs  = (a, b) => a[0] !== b[0] || a[1] !== b[1] || a[2] !== b[2];
+
+/* ============================================================
+   Denoise — edge-aware smoothing
+   Separable box blur (O(1) per pixel) + difference-based blend:
+   where the blurred value barely differs from the source it's
+   noise -> keep the blur; where it differs a lot it's an edge
+   -> keep the original pixel.
+   ============================================================ */
+function boxBlur(src, w, h, r) {
+  const tmp = new Uint8ClampedArray(src.length);
+  const out = new Uint8ClampedArray(src.length);
+  const div = 2 * r + 1;
+
+  /* ---- horizontal ---- */
+  for (let y = 0; y < h; y++) {
+    const row = (y * w) << 2;
+    let s0 = 0, s1 = 0, s2 = 0;
+    for (let k = -r; k <= r; k++) {
+      const x = k < 0 ? 0 : (k >= w ? w - 1 : k);
+      const o = row + (x << 2);
+      s0 += src[o]; s1 += src[o + 1]; s2 += src[o + 2];
+    }
+    for (let x = 0; x < w; x++) {
+      const o = row + (x << 2);
+      tmp[o] = s0 / div; tmp[o + 1] = s1 / div; tmp[o + 2] = s2 / div;
+      tmp[o + 3] = src[o + 3];
+
+      const xo = x - r < 0 ? 0 : (x - r > w - 1 ? w - 1 : x - r);
+      const xi = x + r + 1 > w - 1 ? w - 1 : x + r + 1;
+      const oo = row + (xo << 2), oi = row + (xi << 2);
+      s0 += src[oi]     - src[oo];
+      s1 += src[oi + 1] - src[oo + 1];
+      s2 += src[oi + 2] - src[oo + 2];
+    }
+  }
+
+  /* ---- vertical ---- */
+  for (let x = 0; x < w; x++) {
+    const col = x << 2;
+    let s0 = 0, s1 = 0, s2 = 0;
+    for (let k = -r; k <= r; k++) {
+      const y = k < 0 ? 0 : (k >= h ? h - 1 : k);
+      const o = ((y * w) << 2) + col;
+      s0 += tmp[o]; s1 += tmp[o + 1]; s2 += tmp[o + 2];
+    }
+    for (let y = 0; y < h; y++) {
+      const o = ((y * w) << 2) + col;
+      out[o] = s0 / div; out[o + 1] = s1 / div; out[o + 2] = s2 / div;
+      out[o + 3] = tmp[o + 3];
+
+      const yo = y - r < 0 ? 0 : (y - r > h - 1 ? h - 1 : y - r);
+      const yi = y + r + 1 > h - 1 ? h - 1 : y + r + 1;
+      const oo = ((yo * w) << 2) + col, oi = ((yi * w) << 2) + col;
+      s0 += tmp[oi]     - tmp[oo];
+      s1 += tmp[oi + 1] - tmp[oo + 1];
+      s2 += tmp[oi + 2] - tmp[oo + 2];
+    }
+  }
+  return out;
+}
+
+function denoise(src, w, h, amount) {
+  if (amount <= 0.005) return src;
+
+  const r = Math.max(1, Math.round(amount * 3));   // 3x3 … 7x7
+  const blur = boxBlur(src, w, h, r);
+  const out  = new Uint8ClampedArray(src.length);
+
+  const lo = 6;                         // below this difference: certainly noise
+  const hi = 20 + 70 * amount;          // above this difference: certainly an edge
+  const invSpan = 1 / (hi - lo);
+
+  for (let i = 0; i < src.length; i += 4) {
+    const d = Math.max(
+      Math.abs(src[i]     - blur[i]),
+      Math.abs(src[i + 1] - blur[i + 1]),
+      Math.abs(src[i + 2] - blur[i + 2])
+    );
+
+    let f;
+    if (d <= lo) f = 1;
+    else if (d >= hi) f = 0;
+    else f = (hi - d) * invSpan;
+    f *= amount;
+
+    out[i]     = src[i]     + (blur[i]     - src[i])     * f;
+    out[i + 1] = src[i + 1] + (blur[i + 1] - src[i + 1]) * f;
+    out[i + 2] = src[i + 2] + (blur[i + 2] - src[i + 2]) * f;
+    out[i + 3] = src[i + 3];   // keep alpha untouched
+  }
+  return out;
+}
+
+/* ============================================================
+   Palette extraction — k-means++ in CIELAB
+   ============================================================ */
+function extractPalette(data, k) {
+  const total = data.length >> 2;
+  const maxSamples = 24000;
+  const step = Math.max(1, Math.floor(total / maxSamples));
+
+  const pts = [];
+  const l = [0, 0, 0];
+  for (let i = 0; i < total; i += step) {
+    const o = i << 2;
+    if (data[o + 3] < 128) continue;
+    rgb2labInto(data[o], data[o + 1], data[o + 2], l);
+    pts.push(l[0], l[1], l[2]);
+  }
+  const n = pts.length / 3;
+  if (!n) return [];
+  const kk = Math.min(k, n);
+
+  // ---- k-means++ seeding ----
+  const cent = new Float32Array(kk * 3);
+  const seed = (Math.random() * n) | 0;
+  cent[0] = pts[seed * 3]; cent[1] = pts[seed * 3 + 1]; cent[2] = pts[seed * 3 + 2];
+
+  const dist2 = new Float32Array(n).fill(Infinity);
+  for (let c = 1; c < kk; c++) {
+    const cx = cent[(c - 1) * 3], cy = cent[(c - 1) * 3 + 1], cz = cent[(c - 1) * 3 + 2];
+    let sum = 0;
+    for (let i = 0; i < n; i++) {
+      const dL = pts[i * 3] - cx, da = pts[i * 3 + 1] - cy, db = pts[i * 3 + 2] - cz;
+      const d = dL * dL + da * da + db * db;
+      if (d < dist2[i]) dist2[i] = d;
+      sum += dist2[i];
+    }
+    let t = Math.random() * sum, idx = n - 1;
+    for (let i = 0; i < n; i++) { t -= dist2[i]; if (t <= 0) { idx = i; break; } }
+    cent[c * 3] = pts[idx * 3]; cent[c * 3 + 1] = pts[idx * 3 + 1]; cent[c * 3 + 2] = pts[idx * 3 + 2];
+  }
+
+  // ---- Lloyd iterations ----
+  const counts = new Int32Array(kk);
+  const sums = new Float64Array(kk * 3);
+  for (let iter = 0; iter < 12; iter++) {
+    sums.fill(0); counts.fill(0);
+    for (let i = 0; i < n; i++) {
+      const L = pts[i * 3], a = pts[i * 3 + 1], b = pts[i * 3 + 2];
+      let best = 0, bd = Infinity;
+      for (let c = 0; c < kk; c++) {
+        const dL = L - cent[c * 3], da = a - cent[c * 3 + 1], db = b - cent[c * 3 + 2];
+        const d = dL * dL + da * da + db * db;
+        if (d < bd) { bd = d; best = c; }
+      }
+      counts[best]++;
+      sums[best * 3] += L; sums[best * 3 + 1] += a; sums[best * 3 + 2] += b;
+    }
+    let moved = 0;
+    for (let c = 0; c < kk; c++) {
+      if (!counts[c]) continue;
+      const nL = sums[c * 3] / counts[c];
+      const na = sums[c * 3 + 1] / counts[c];
+      const nb = sums[c * 3 + 2] / counts[c];
+      moved += Math.abs(nL - cent[c * 3]) + Math.abs(na - cent[c * 3 + 1]) + Math.abs(nb - cent[c * 3 + 2]);
+      cent[c * 3] = nL; cent[c * 3 + 1] = na; cent[c * 3 + 2] = nb;
+    }
+    if (moved < 0.5) break;
+  }
+
+  const out = [];
+  for (let c = 0; c < kk; c++) {
+    if (!counts[c]) continue;
+    const rgb = labToRgb(cent[c * 3], cent[c * 3 + 1], cent[c * 3 + 2]);
+    out.push({ src: rgb, tgt: rgb.slice(), weight: counts[c] / n });
+  }
+  out.sort((a, b) => b.weight - a.weight);
+  return out;
+}
+
+/* ============================================================
+   App
+   ============================================================ */
+const els = {
+  file:        document.getElementById('file'),
+  stage:       document.getElementById('stage'),
+  canvas:      document.getElementById('view'),
+  empty:       document.getElementById('empty'),
+  swatches:    document.getElementById('swatches'),
+  k:           document.getElementById('k'),
+  kVal:        document.getElementById('k-val'),
+  reextract:   document.getElementById('reextract'),
+  reset:       document.getElementById('reset'),
+  keeplum:     document.getElementById('keeplum'),
+  strength:    document.getElementById('strength'),
+  strengthVal: document.getElementById('strength-val'),
+  download:    document.getElementById('download'),
+  denoise:     document.getElementById('denoise'),
+  denoiseVal:  document.getElementById('denoise-val'),
+  fileinfo:    document.getElementById('fileinfo'),
+  status:      document.getElementById('status'),
+};
+const ctx = els.canvas.getContext('2d');
+
+const state = {
+  w: 0, h: 0,
+  name: 'image',
+  src: null,        // untouched pixels straight from the file
+  work: null,       // pixels after cleanup — used for extraction + render
+  palette: [],
+  keepLum: true,
+  strength: 1,
+  clean: 0,         // 0..1 noise-reduction amount
+};
+
+function setStatus(t) { els.status.textContent = t; }
+
+/* ---------- loading ---------- */
+const MAX_DIM = 2400;   // keeps preview interactive on huge photos
+
+async function handleFile(file) {
+  if (!file || !file.type.startsWith('image/')) return;
+  const url = URL.createObjectURL(file);
+  const img = new Image();
+  try {
+    await new Promise((res, rej) => { img.onload = res; img.onerror = rej; img.src = url; });
+  } catch { URL.revokeObjectURL(url); return; }
+  URL.revokeObjectURL(url);
+
+  const nw = img.naturalWidth || img.width;
+  const nh = img.naturalHeight || img.height;
+  if (!nw || !nh) return;
+
+  const scale = Math.min(1, MAX_DIM / Math.max(nw, nh));
+  const w = Math.max(1, Math.round(nw * scale));
+  const h = Math.max(1, Math.round(nh * scale));
+
+  const c = document.createElement('canvas');
+  c.width = w; c.height = h;
+  const cx = c.getContext('2d', { willReadFrequently: true });
+  cx.drawImage(img, 0, 0, w, h);
+
+  state.w = w; state.h = h;
+  state.name = (file.name || 'image').replace(/\.[^.]+$/, '') || 'image';
+  state.src  = cx.getImageData(0, 0, w, h).data;
+  state.clean = els.denoise.value / 100;
+  state.work = denoise(state.src, w, h, state.clean);
+
+  els.canvas.width = w;
+  els.canvas.height = h;
+  els.canvas.style.display = 'block';
+  els.empty.style.display = 'none';
+  els.download.disabled = false;
+
+  els.fileinfo.textContent = (file.name || 'image') + ' · ' + nw + '×' + nh;
+  els.fileinfo.title = file.name || 'image';
+
+  reextract(true);
+}
+
+/* ---------- cleanup ---------- */
+let cleanTimer = null;
+function refreshClean() {
+  if (!state.src) return;
+  state.work = denoise(state.src, state.w, state.h, state.clean);
+  reextract(false);       // cleaner pixels → cleaner palette, keeps your target colours
+}
+
+/* ---------- palette ---------- */
+function reextract(resetTargets) {
+  if (!state.work) return;
+  const k = +els.k.value;
+  const old = state.palette;
+  const pal = extractPalette(state.work, k);
+
+  if (!resetTargets && old.length) {
+    // keep the user's edits: each new colour inherits the nearest old target
+    for (const p of pal) {
+      let best = null, bd = Infinity;
+      for (const q of old) {
+        const d = (p.src[0] - q.src[0]) ** 2 + (p.src[1] - q.src[1]) ** 2 + (p.src[2] - q.src[2]) ** 2;
+        if (d < bd) { bd = d; best = q; }
+      }
+      if (best) p.tgt = best.tgt.slice();
+    }
+  }
+
+  state.palette = pal;
+  renderSwatches();
+  scheduleRender();
+  setStatus('ready — ' + pal.length + ' colours extracted');
+}
+
+function renderSwatches() {
+  els.swatches.innerHTML = '';
+  if (!state.palette.length) {
+    els.swatches.innerHTML = '<p class="hint">no image loaded yet</p>';
+    return;
+  }
+  state.palette.forEach(p => {
+    const row = document.createElement('div');
+    row.className = 'row' + (differs(p.src, p.tgt) ? ' modified' : '');
+    row.innerHTML =
+      `<span class="chip" style="background:${css(p.src)}" title="original ${hex(p.src)}"></span>` +
+      `<span class="arrow">→</span>` +
+      `<label class="chip pick" title="click to change">` +
+        `<span style="background:${css(p.tgt)}"></span>` +
+        `<input type="color" value="${hex(p.tgt)}">` +
+      `</label>` +
+      `<span class="hex">${hex(p.tgt)}</span>` +
+      `<span class="pct">${Math.round(p.weight * 100)}%</span>`;
+
+    const input = row.querySelector('input');
+    input.addEventListener('input', e => {
+      p.tgt = hexToRgb(e.target.value);
+      row.querySelector('.pick > span').style.background = css(p.tgt);
+      row.querySelector('.hex').textContent = e.target.value;
+      row.classList.toggle('modified', differs(p.src, p.tgt));
+      scheduleRender();
+    });
+    els.swatches.appendChild(row);
+  });
+}
+
+/* ---------- rendering ---------- */
+let queued = false;
+function scheduleRender() {
+  if (queued) return;
+  queued = true;
+  requestAnimationFrame(() => { queued = false; render(); });
+}
+
+function render() {
+  if (!state.work) return;
+  const { w, h, palette } = state;
+  const src = state.work;
+  const n = palette.length;
+
+  const out = ctx.createImageData(w, h);
+  const o = out.data;
+
+  if (n === 0) {
+    o.set(src);
+    ctx.putImageData(out, 0, 0);
+    return;
+  }
+
+  /* ---- 1. Nearest-source-colour lookup table (5 bits/channel, in Lab) ---- */
+  const BITS = 5, SIZE = 1 << BITS;
+  const lut = new Uint8Array(SIZE * SIZE * SIZE);
+  const palLab = palette.map(p => rgb2lab(p.src[0], p.src[1], p.src[2]));
+  const scratch = [0, 0, 0];
+
+  for (let ri = 0; ri < SIZE; ri++) {
+    const r = (ri << 3) | 4;
+    for (let gi = 0; gi < SIZE; gi++) {
+      const g = (gi << 3) | 4;
+      for (let bi = 0; bi < SIZE; bi++) {
+        const b = (bi << 3) | 4;
+        rgb2labInto(r, g, b, scratch);
+        let best = 0, bd = Infinity;
+        for (let i = 0; i < n; i++) {
+          const pl = palLab[i];
+          const dL = scratch[0] - pl[0], da = scratch[1] - pl[1], db = scratch[2] - pl[2];
+          const d = dL * dL + da * da + db * db;
+          if (d < bd) { bd = d; best = i; }
+        }
+        lut[(ri << 10) | (gi << 5) | bi] = best;
+      }
+    }
+  }
+
+  /* ---- 2. Target colours ---- */
+  const tR = new Uint8Array(n), tG = new Uint8Array(n), tB = new Uint8Array(n);
+  const tLab = [];
+  for (let i = 0; i < n; i++) {
+    const t = palette[i].tgt;
+    tR[i] = t[0]; tG[i] = t[1]; tB[i] = t[2];
+    tLab.push(rgb2lab(t[0], t[1], t[2]));
+  }
+
+  /* ---- 3. Per-pixel remap ---- */
+  const keepLum = state.keepLum;
+  const strength = state.strength;
+  const tmp = [0, 0, 0];
+
+  for (let i = 0, len = src.length; i < len; i += 4) {
+    const r = src[i], g = src[i + 1], b = src[i + 2];
+    const idx = lut[((r >> 3) << 10) | ((g >> 3) << 5) | (b >> 3)];
+
+    let nr, ng, nb;
+    if (keepLum) {
+      const L = rgb2L(r, g, b);            // the pixel's own lightness
+      const tl = tLab[idx];                 // the target's hue + chroma
+      labToRgbInto(L, tl[1], tl[2], tmp);
+      nr = tmp[0]; ng = tmp[1]; nb = tmp[2];
+    } else {
+      nr = tR[idx]; ng = tG[idx]; nb = tB[idx];
+    }
+
+    if (strength !== 1) {
+      nr = r + (nr - r) * strength;
+      ng = g + (ng - g) * strength;
+      nb = b + (nb - b) * strength;
+    }
+
+    o[i] = nr; o[i + 1] = ng; o[i + 2] = nb; o[i + 3] = src[i + 3];
+  }
+
+  ctx.putImageData(out, 0, 0);
+}
+
+/* ---------- events ---------- */
+els.file.addEventListener('change', e => {
+  const f = e.target.files && e.target.files[0];
+  if (f) handleFile(f);
+  e.target.value = '';
+});
+
+els.empty.addEventListener('click', () => els.file.click());
+
+['dragenter', 'dragover'].forEach(ev =>
+  els.stage.addEventListener(ev, e => { e.preventDefault(); els.stage.classList.add('drag'); })
+);
+['dragleave', 'drop'].forEach(ev =>
+  els.stage.addEventListener(ev, e => { e.preventDefault(); els.stage.classList.remove('drag'); })
+);
+els.stage.addEventListener('drop', e => {
+  const f = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
+  if (f) handleFile(f);
+});
+window.addEventListener('dragover', e => e.preventDefault());
+window.addEventListener('drop', e => e.preventDefault());
+
+let kTimer = null;
+els.k.addEventListener('input', e => {
+  els.kVal.textContent = e.target.value;
+  clearTimeout(kTimer);
+  kTimer = setTimeout(() => reextract(false), 140);
+});
+
+els.denoise.addEventListener('input', e => {
+  state.clean = e.target.value / 100;
+  els.denoiseVal.textContent = e.target.value + '%';
+  clearTimeout(cleanTimer);
+  cleanTimer = setTimeout(refreshClean, 150);
+});
+
+els.reextract.addEventListener('click', () => reextract(false));
+
+els.reset.addEventListener('click', () => {
+  state.palette.forEach(p => { p.tgt = p.src.slice(); });
+  renderSwatches();
+  scheduleRender();
+});
+
+els.keeplum.addEventListener('change', e => {
+  state.keepLum = e.target.checked;
+  scheduleRender();
+});
+
+els.strength.addEventListener('input', e => {
+  state.strength = e.target.value / 100;
+  els.strengthVal.textContent = e.target.value + '%';
+  scheduleRender();
+});
+
+els.download.addEventListener('click', () => {
+  if (!state.src) return;
+  els.canvas.toBlob(blob => {
+    if (!blob) return;
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = state.name + '-palette-swap.png';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+  }, 'image/png');
+});
+
+})();
+</script>
+</body>
+</html>
